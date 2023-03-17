@@ -1,0 +1,229 @@
+---
+title: "STA2300Final"
+author: "Joyce Shiah"
+date: "5/2/2021"
+output: pdf_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+
+**Abstract**
+Potable water is becoming increasingly scarce across the globe, pushing forth for the innovative water treatment technologies and methodologies for water conservation. The efficacy of onsite water treatment plants succeeding while minimizing as much harm to the ecosystem and human well-being is most crucial for environmental sustainability. The treatment plants include a series of sequencing-batch reactors, membrane bioreactors, pumps, and blowers to filtrate the untreated water. This research project will involve modeling and identifying patterns the data in order to accurately detect when the fault first occurred. 
+
+**Introduction** 
+The case study of the Mines Park water treatment plant is the foundation to understanding how to tackle larger-scaled water scarcity problems around the country. Due to the potential human and environmental negative impacts of the plant, it is necessary to analyze the current treatment and distribution model to identify ways of improving the safety of the project. The control variables-- blower flow rates, transmembrane pressure, and “mode” of operation-- will first be assessed based on its impact on the system at different levels, then response variables as listed in the abstract will be analyzed using modeling. The Mines Park data set includes a total of 43,551 measurements with 42 variables, including observations recorded every 10 minutes. The system’s operations started from April 10, 2010 at 6:10am to May 11, 2010 at 5:00am. Due to the detected fault in the treatment system on April 24th, 2010 at 10:00am, response variable modeling groups will be split up by prior to and after occurrence of fault detection. With the implementation of the backwards model, identifying the threshold as the fault detection can be done. Additionally, researchers will be able to use the data analysis to pinpoint factors that may need improvement to create a more efficient and eco-friendly system.
+```{r}
+
+##--------------------------------------
+## Install and load any needed libraries
+##--------------------------------------
+
+library(lubridate)
+
+
+##--------------------------------------
+## Load the data
+##--------------------------------------
+
+data <- read.csv("Mines_Park_pH_Fault.csv", stringsAsFactors = FALSE)
+attr(data$dateTime, "tzone") <- "America/Denver"
+
+head(data)
+
+colnames(data)
+dim(data)
+head(data$dateTime)
+tail(data$dateTime)
+
+
+#April 24, 2010, 10:00 AM.
+
+month.val <- month(data$dateTime)
+day.val <- day(data$dateTime)
+hour.val <- hour(data$dateTime)
+fault.time <- which(month.val==4 & day.val==24 & hour.val==10)[1]
+data$dateTime[fault.time]
+
+
+######################
+# Plot of pH
+# The biological community cannot survive if
+# the pH is less than 6.5
+# It clearly dips below this value
+######################
+
+ts.plot(data$ras_ph, xlab="Index", ylab="pH")
+abline(h=6.5,col=4,lwd=2)
+abline(v=fault.time,col=2,lwd=2)
+
+######################
+# Plot of MBR Flow
+######################
+ts.plot(data$mbr_1_perm_flow, xlab="Index", ylab="MBR 1, Permeate Flow")
+abline(v=fault.time,col=2,lwd=2)
+
+ts.plot(data$mbr_2_perm_flow, xlab="Index", ylab="MBR 2, Permeate Flow")
+abline(v=fault.time,col=2,lwd=2)
+abline(v=fault.time,col=2,lwd=2)
+
+
+
+
+
+######################
+# Sorting the variables into
+# groups
+######################
+## cyclic variables
+cyclic_vars <- c("cos_daily", 
+                     "sin_daily", 
+                     "cos_2hour", 
+                     "sin_2hour", 
+                     "cos_hourly", 
+                     "sin_hourly")
+##control variables
+control_vars <- c("bio_1_blow_flow", 
+                  "bio_2_blow_flow", 
+                  "mbr_1_tmp", 
+                  "mbr_2_tmp",
+                  "ambient_temp", 
+                  "bio_1_phase_1", 
+                  "bio_1_phase_2", 
+                  "bio_2_phase_1",
+                  "bio_2_phase_2", 
+                  "mbr_1_mode_1", 
+                  "mbr_1_mode_2", 
+                  "mbr_1_mode_4",
+                  "mbr_2_mode_1", 
+                  "mbr_2_mode_2", 
+                  "mbr_2_mode_4")
+
+## response variables
+response_vars <- c("mbr_1_perm_flow", 
+                   "mbr_2_perm_flow", 
+                   "ras_temp",
+                   "bio_1_do", 
+                   "bio_2_do", 
+                   "mbr_1_level", 
+                   "mbr_2_level", 
+                   "perm_turb", 
+                   "sewage_flow", 
+                   "bio_1_level", 
+                   "bio_2_level",
+                   "bio_1_temp", 
+                   "bio_2_temp", 
+                   "bio_1_tss", 
+                   "bio_2_tss", 
+                   "perm_tank_level", 
+                   "ras_do", 
+                   "ras_ph", 
+                   "perm_cond", 
+                   "ras_tss")
+                   
+#Other predictors                  
+scale_predictors <- c("bio_1_blow_flow",
+                      "bio_2_blow_flow", 
+                      "ambient_temp",
+                      "mbr_1_tmp", 
+                      "mbr_2_tmp")
+
+x.cols<-NULL
+for(i in 1:length(scale_predictors)){
+	x.cols<-c(x.cols,which(colnames(data)==scale_predictors[i]))}
+for(i in 1:length(control_vars)){
+	x.cols<-c(x.cols,which(colnames(data)==control_vars[i]))}
+for(i in 1:length(cyclic_vars)){
+	x.cols<-c(x.cols,which(colnames(data)==cyclic_vars[i]))}
+
+y.cols<-NULL
+for(i in 1:length(response_vars)){
+	y.cols<-c(y.cols,which(colnames(data)==response_vars[i]))}
+
+
+XX<-data[,x.cols]
+YY<-data[,y.cols]
+
+
+obs_hour <- hour(data$dateTime)
+obs_minute <- minute(data$dateTime)
+data$cos_2hour <- cos((obs_hour + obs_minute/60)*(360/24)*pi/180)
+data$sin_2hour <- sin((obs_hour + obs_minute/60)*(360/24)*pi/180)
+
+
+
+
+
+
+
+proportion <- 0.8
+
+range <- c(3084:10084)
+
+n <- length(range)
+
+
+index <- floor(n *  proportion)
+
+train_inputs <- XX[range[1]: range[index],]
+test_inputs <- XX[range[index+1]: range[n], ]
+
+train_labels <- YY[range[1]: range[index], "ras_ph"]
+test_labels <- YY[range[index+1]: range[n], "ras_ph"]
+
+nrow(train_inputs)
+nrow(test_inputs)
+
+ts.plot(YY$ras_ph, xlab="Index", ylab="pH")
+abline(v=range[1],col=2,lwd=2)
+abline(v=range[index],col=2,lwd=2)
+abline(v=range[n],col=2,lwd=2)
+
+predictionpH <- lm(train_labels ~  mbr_1_mode_1 +mbr_1_mode_2 + mbr_1_mode_4 , data=train_inputs)
+
+predictedvalues <- predict(predictionpH, test_inputs)
+ts.plot(test_labels, xlab="Index", ylab="pH" )
+lines(predictedvalues, col="red")
+
+n <- nrow(train_inputs) 
+BICbackwardmodel <- step(predictionpH, direction="backward", k=log(n), trace = 0)
+BICpredict <- predict(BICbackwardmodel, test_inputs)
+ts.plot(test_labels, xlab="Index", ylab="pH" )
+lines(BICpredict, col="red")
+
+summary(BICbackwardmodel)
+
+n <- nrow(train_inputs) 
+BICforwardmodel <- step(predictionpH, direction="forward", k=log(n), trace = 0)
+BICfpredict <- predict(BICforwardmodel, test_inputs)
+ts.plot(test_labels, xlab="Index", ylab="pH" )
+lines(BICfpredict, col="red")
+
+summary(BICforwardmodel)
+
+backwardpredictions <- predict(BICbackwardmodel, test_inputs)
+ts.plot(test$ras_ph, xlab="Index", ylab="pH" )
+lines(backwardpredictions, col="red")
+
+
+
+suppressMessages(library(glmnet))
+leave_out <- which((colnames(train) == "ras_ph")| (colnames(train) == "dateTime"))
+
+x <- as.matrix(train[,-leave_out])
+y <- train$ras_ph
+
+lasso_fit <- cv.glmnet(x, y)
+
+coef(lasso_fit)
+
+lassopredictions <- predict(lasso_fit, newx=x)
+ts.plot(test$ras_ph, xlab="Index", ylab="pH" )
+lines(lassopredictions, col="red")
+
+
+BICresiduals <- residuals(BICbackwardmodel)
+```
+
